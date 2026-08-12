@@ -1,0 +1,23 @@
+master_seed: 20250812
+
+scenario:
+  name: baseline_75d
+  n_users: 800
+  vip_share: 0.12
+  n_devices: 1100
+  n_transactions: 12000
+  window_days: 75
+  # overall fraud target band checked by tests
+  fraud_rate_min: 0.005
+  fraud_rate_max: 0.02
+  # segment priors (VIP quieter)
+  fraud_prior_mass: 0.012
+  fraud_prior_vip: 0.003
+  # ring / mismatch knobs
+  n_rings: 8
+  ring_size_devices: 4
+  geo_mismatch_fraud_share: 0.35
+  late_chargeback_share: 0.4
+  chargeback_lag_days_min: 3
+  chargeback_lag_days_max: 21
+  ring_tx_share: 0.08

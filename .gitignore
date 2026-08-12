@@ -1,0 +1,25 @@
+# generated data (keep data/.gitkeep)
+data/*.csv
+data/*.parquet
+data/*.json
+!data/.gitkeep
+!data/fixtures/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

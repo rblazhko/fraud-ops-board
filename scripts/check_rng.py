@@ -32,7 +32,6 @@ def reproducibility_check(seed: int) -> None:
     b = draw(seed)
     if not np.allclose(a, b):
         raise SystemExit("PCG64 stream not reproducible for master_seed")
-    # different seed should differ
     c = draw(seed + 1)
     if np.allclose(a, c):
         raise SystemExit("different seeds unexpectedly matched")
@@ -42,7 +41,6 @@ def reproducibility_check(seed: int) -> None:
 def try_rng_diagnostics(seed: int) -> None:
     exe = shutil.which("rng-diagnostics")
     if exe is None:
-        # also try python -m
         try:
             import importlib.util
 

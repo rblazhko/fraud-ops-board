@@ -1,5 +1,4 @@
--- Amount z-score vs the user's own history (prior txs only).
--- Cold-start users get NULL z and a flag.
+-- Amount z vs prior user history; cold-start (<3 txs) → NULL z + flag.
 
 CREATE OR REPLACE VIEW feat_amount AS
 WITH hist AS (
@@ -44,7 +43,6 @@ SELECT
         ELSE (h.amount - h.amt_mean_hist) / h.amt_std_hist
     END AS amount_z_user,
     CASE WHEN h.n_hist < 3 THEN 1 ELSE 0 END AS cold_start_flag,
-    -- geo mismatch vs user profile
     CASE
         WHEN t.country <> u.country THEN 1 ELSE 0
     END AS geo_mismatch

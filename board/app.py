@@ -53,7 +53,6 @@ def _inject_css() -> None:
             background:
                 linear-gradient(180deg, #dfe5eb 0%, {COLORS["bg"]} 28%, #edf0f3 100%);
         }}
-        /* kill default Streamlit chrome clutter */
         #MainMenu {{visibility: hidden;}}
         footer {{visibility: hidden;}}
         header {{visibility: hidden;}}
@@ -425,5 +424,4 @@ def main() -> None:
         render_queue(view)
 
 
-# Streamlit executes the script top-to-bottom on each run.
 main()

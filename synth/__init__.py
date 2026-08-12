@@ -1,1 +1,1 @@
-# Synthetic antifraud event generation. Keep this package small.
+"""Synthetic antifraud event generation."""

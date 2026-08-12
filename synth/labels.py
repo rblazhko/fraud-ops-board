@@ -41,7 +41,6 @@ def assign_fraud_flags(
     out["label_fraud"] = fraud.astype(int)
     out["label_source"] = np.where(fraud, "rule_inject", "none")
 
-    # geo mismatch on a share of fraud
     user_country = users.set_index("user_id")["country"]
     uc = out["user_id"].map(user_country)
     fraud_idx = np.flatnonzero(fraud)
@@ -52,7 +51,7 @@ def assign_fraud_flags(
             alt = [c for c in ("DE", "FR", "NL", "PL", "ES", "IT", "GB", "US") if c != uc.iloc[i]]
             out.at[out.index[i], "country"] = rng.choice(alt)
 
-    # late chargebacks
+    # Late labels: chargeback_ts lags tx so as-of joins miss them until then
     chargeback_ts = [pd.NaT] * len(out)
     if len(fraud_idx):
         n_late = int(round(len(fraud_idx) * late_chargeback_share))
@@ -64,7 +63,6 @@ def assign_fraud_flags(
             out.at[out.index[i], "label_source"] = "chargeback"
 
     out["chargeback_ts"] = chargeback_ts
-    # drop helper col if present
     if "ring_id" in out.columns:
         out = out.drop(columns=["ring_id"])
     return out

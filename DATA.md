@@ -14,9 +14,8 @@ rng = np.random.Generator(np.random.PCG64(master_seed))
 
 Same seed → same CSVs (asserted in `tests/test_synth_invariants.py`).
 
-Optional validation of the PRNG itself is out of band: see [rng-diagnostics](https://github.com/rblazhko/rng-diagnostics).
-This repo only checks reproducibility and documents how to call that CLI. A future uint32
-sampler in C++ is optional and not part of this skeleton.
+Optional PRNG validation is out of band: see [rng-diagnostics](https://github.com/rblazhko/rng-diagnostics).
+This repo only checks reproducibility and documents how to call that CLI.
 
 ## Tables
 

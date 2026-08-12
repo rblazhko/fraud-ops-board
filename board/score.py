@@ -1,13 +1,6 @@
-"""Transparent rule-based risk score from SQL feature columns.
+"""Rule-based risk score from SQL features (not ML). Clipped to [0, 1].
 
-Not a trained model. Weighted blend so the ops board is usable before ML.
-Score is clipped to [0, 1]. Weights are fixed knobs, not fitted.
-
-Components (each mapped to ~[0, 1] with soft caps):
-  velocity — 1h / 24h tx density + burst flag
-  device   — shared ring, degree, multi-user 24h
-  amount   — |amount_z_user| vs history; small cold-start penalty
-  geo      — country mismatch vs user profile
+Components (~[0, 1] with soft caps): velocity, device reuse, amount z, geo.
 """
 
 from __future__ import annotations

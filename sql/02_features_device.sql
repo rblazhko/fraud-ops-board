@@ -1,5 +1,4 @@
--- Device reuse / degree features.
--- device_degree = distinct users seen on the device up to (and including) this tx.
+-- Device reuse; degree counts distinct users on the device up to this tx (inclusive).
 
 CREATE OR REPLACE VIEW feat_device AS
 WITH tx AS (

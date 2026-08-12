@@ -60,7 +60,6 @@ def build_devices(rng: np.random.Generator, cfg: dict, window_start: datetime) -
     ring_size = int(cfg["ring_size_devices"])
 
     shared = np.zeros(n, dtype=int)
-    # first devices belong to rings
     ring_slots = min(n, n_rings * ring_size)
     shared[:ring_slots] = 1
     # shuffle so ring devices are not a contiguous block in ids
@@ -111,11 +110,9 @@ def build_transactions(
     rings = _ring_device_ids(devices, int(cfg["n_rings"]), int(cfg["ring_size_devices"]))
 
     records: list[dict] = []
-    # reserve a slice of volume for ring bursts
     n_ring_tx = int(n_tx * float(cfg.get("ring_tx_share", 0.08)))
     n_normal = n_tx - n_ring_tx
 
-    # normal traffic
     for _ in range(n_normal):
         uid = str(rng.choice(user_ids))
         seg = seg_map[uid]
@@ -143,7 +140,7 @@ def build_transactions(
             }
         )
 
-    # ring bursts: same few devices, short time windows, mixed users
+    # Ring bursts: few shared devices, short windows, mixed users
     remaining = n_ring_tx
     ring_id = 0
     while remaining > 0 and rings:

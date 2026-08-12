@@ -1,5 +1,4 @@
--- Velocity features: tx counts in rolling 1h / 24h windows per user.
--- DuckDB range joins keep this readable without a separate ASOF pipeline.
+-- Rolling 1h / 24h velocity per user (prior txs only; self excluded via ts <).
 
 CREATE OR REPLACE VIEW feat_velocity AS
 WITH base AS (
@@ -17,7 +16,6 @@ counts AS (
         b.tx_id,
         b.ts,
         b.user_id,
-        -- txs by same user in prior 1h (exclude self)
         (
             SELECT COUNT(*)
             FROM transactions x
@@ -48,7 +46,6 @@ SELECT
     c.tx_cnt_1h,
     c.tx_cnt_24h,
     c.amt_sum_24h,
-    -- simple burst flag: dense 1h relative to 24h
     CASE
         WHEN c.tx_cnt_24h > 0 AND c.tx_cnt_1h >= 3 AND (c.tx_cnt_1h * 1.0 / c.tx_cnt_24h) >= 0.5
             THEN 1

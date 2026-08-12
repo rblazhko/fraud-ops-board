@@ -1,5 +1,4 @@
--- Base tables for DuckDB feature runs.
--- Loaded from CSV by scripts/run_sql_features.py; this file documents types.
+-- Schema docs for DuckDB feature runs (CSVs loaded by scripts/run_sql_features.py).
 
 CREATE TABLE IF NOT EXISTS users (
     user_id     VARCHAR PRIMARY KEY,

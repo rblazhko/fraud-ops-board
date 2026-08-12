@@ -77,7 +77,6 @@ def run(data_dir: Path, sql_dir: Path, out_dir: Path) -> None:
         n = con.execute(f"SELECT COUNT(*) FROM {view}").fetchone()[0]
         print(f"wrote {out} ({n} rows)")
 
-    # joined wide table for later modeling
     wide = out_dir / "features_wide.parquet"
     con.execute(
         f"""

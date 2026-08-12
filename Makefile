@@ -1,4 +1,4 @@
-.PHONY: data features validate-rng test clean
+.PHONY: data features validate-rng test board clean
 
 PYTHON ?= python3
 export PYTHONPATH := .
@@ -14,6 +14,9 @@ validate-rng:
 
 test:
 	$(PYTHON) -m pytest -q tests/
+
+board:
+	$(PYTHON) -m streamlit run board/app.py --server.headless true
 
 clean:
 	rm -f data/*.csv data/*.parquet

@@ -11,12 +11,12 @@ working together on an imbalanced fraud-ops style problem.
 - Reproducible event generation (users, devices, transactions) from `seed.yaml`
 - DuckDB SQL feature views: velocity, device reuse, amount z-score
 - A thin Python CLI to materialize those features as parquet
+- Local Streamlit ops board (rule score + VIP/mass queue) over `features_wide.parquet`
 - Tests for fraud-rate band, VIP vs mass priors, and seed reproducibility
 
 ## What this is not
 
-- A live monitoring UI (Streamlit board comes later)
-- An ML model package (next step after this skeleton)
+- A production monitoring stack or trained fraud model
 - A copy of any employer pipeline or NDA dataset
 
 ## Quick start
@@ -29,7 +29,21 @@ pip install -r requirements.txt
 make data          # write CSVs under data/
 make features      # DuckDB: load tables, run sql/*.sql, write feature parquet
 make test
+make board         # Streamlit ops board (opens locally)
 ```
+
+### Ops board
+
+```bash
+make board
+# or: streamlit run board/app.py
+```
+
+Opens a single desk view: headline metrics, VIP vs mass, daily volume/rates,
+score histogram, and a sortable alert queue. Risk score is a documented
+weighted blend of SQL features (`board/score.py`) — not ML.
+
+Filters: date range, segment (vip / mass / all), min score.
 
 Optional PRNG check (reproducibility smoke, or [rng-diagnostics](https://github.com/rblazhko/rng-diagnostics) if installed):
 
@@ -44,8 +58,9 @@ make validate-rng
 | `synth/` | Synthetic generator |
 | `sql/` | DuckDB feature views |
 | `scripts/` | Feature runner + RNG check |
+| `board/` | Streamlit ops board + rule score |
 | `DATA.md` | Schema, seeds, generation rules |
 
 ## Status
 
-First commit is data + SQL only. Model scoring and a Streamlit ops board are intentional follow-ups.
+Data + SQL features + local ops board. Trained model scoring is the natural next step.

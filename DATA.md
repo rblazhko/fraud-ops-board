@@ -72,4 +72,8 @@ This repo only checks reproducibility and documents how to call that CLI.
 
 `make features` writes parquet under `data/features_*.parquet` from the SQL views.
 
+`make train` fits `HistGradientBoostingClassifier` on `features_wide.parquet`
+with a time-quantile split (train past / eval future), writes
+`artifacts/model.joblib` and `reports/metrics.{json,md}`.
+
 Large files are gitignored. Regenerate on demand.

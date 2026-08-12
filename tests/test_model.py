@@ -14,7 +14,6 @@ from model.train import fit_model, time_split, train_and_persist
 
 
 def _tiny_labeled(n: int = 80) -> pd.DataFrame:
-    rng = np.random.default_rng(0)
     ts0 = pd.Timestamp("2025-01-01")
     rows = []
     for i in range(n):

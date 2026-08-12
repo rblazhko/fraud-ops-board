@@ -499,4 +499,5 @@ def main() -> None:
         render_queue(view)
 
 
-main()
+if __name__ == "__main__":
+    main()

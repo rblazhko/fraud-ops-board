@@ -1,6 +1,7 @@
-"""Rule-based risk score from SQL features (not ML). Clipped to [0, 1].
+"""Rule-based risk score from SQL features — transparent baseline (not ML).
 
-Components (~[0, 1] with soft caps): velocity, device reuse, amount z, geo.
+Clipped to [0, 1]. Components (~[0, 1] with soft caps): velocity, device
+reuse, amount z, geo. Kept for board comparison against `model/` scores.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Fraud Ops Board — Streamlit view over synthetic features + rule score.
+"""Fraud Ops Board — Streamlit view over SQL features + ML / rule scores.
 
 Run: `make board`  or  `streamlit run board/app.py`
 """
@@ -11,10 +11,13 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+from board.ml_score import attach_ml_scores, model_available
 from board.score import WEIGHTS, precision_at_k, score_frame
+from model.train import time_split
 
 ROOT = Path(__file__).resolve().parents[1]
 WIDE = ROOT / "data" / "features_wide.parquet"
+METRICS_JSON = ROOT / "reports" / "metrics.json"
 
 # Calm ops-desk palette (cool slate, steel accent — not purple / neon)
 COLORS = {
@@ -30,6 +33,9 @@ COLORS = {
     "series": "#2f5d7a",
     "rate": "#a8443a",
 }
+
+FLAG_THRESHOLD = 0.35
+SCORE_COL = "ml_score"  # queue / KPIs default to ML; rule_score kept for compare
 
 st.set_page_config(
     page_title="Fraud Ops Board",
@@ -127,9 +133,15 @@ def load_scored() -> pd.DataFrame:
         raise FileNotFoundError(
             f"Missing {WIDE}. Run `make data && make features` first."
         )
+    if not model_available():
+        raise FileNotFoundError(
+            "Missing artifacts/model.joblib. Run `make train` after features."
+        )
     raw = pd.read_parquet(WIDE)
     raw["ts"] = pd.to_datetime(raw["ts"])
-    return score_frame(raw)
+    scored = score_frame(raw)
+    scored = scored.rename(columns={"risk_score": "rule_score"})
+    return attach_ml_scores(scored)
 
 
 def _fmt_pct(x: float) -> str:
@@ -152,20 +164,20 @@ def filter_frame(
     end: pd.Timestamp,
     segment: str,
     min_score: float,
+    score_col: str = SCORE_COL,
 ) -> pd.DataFrame:
-    # inclusive calendar end-of-day
     end_ts = pd.Timestamp(end) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
     mask = (df["ts"] >= pd.Timestamp(start)) & (df["ts"] <= end_ts)
     if segment != "all":
         mask &= df["segment"] == segment
-    mask &= df["risk_score"] >= min_score
+    mask &= df[score_col] >= min_score
     return df.loc[mask].copy()
 
 
-def segment_compare(df: pd.DataFrame) -> pd.DataFrame:
+def segment_compare(df: pd.DataFrame, score_col: str = SCORE_COL) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
-    tmp = df.assign(_flagged=df["risk_score"] >= 0.35)
+    tmp = df.assign(_flagged=df[score_col] >= FLAG_THRESHOLD)
     g = tmp.groupby("segment", observed=True)
     out = pd.DataFrame(
         {
@@ -174,18 +186,19 @@ def segment_compare(df: pd.DataFrame) -> pd.DataFrame:
             "avg_amount": g["amount"].mean(),
             "flagged_share": g["_flagged"].mean(),
             "alert_share": g.size() / len(df),
-            "avg_score": g["risk_score"].mean(),
+            "avg_ml": g["ml_score"].mean(),
+            "avg_rule": g["rule_score"].mean(),
         }
     ).reset_index()
     return out.sort_values("segment")
 
 
-def daily_series(df: pd.DataFrame) -> pd.DataFrame:
+def daily_series(df: pd.DataFrame, score_col: str = SCORE_COL) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["day", "volume", "fraud_rate", "flagged_rate"])
     tmp = df.copy()
     tmp["day"] = tmp["ts"].dt.floor("D")
-    flagged = tmp["risk_score"] >= 0.35
+    flagged = tmp[score_col] >= FLAG_THRESHOLD
     g = tmp.groupby("day", observed=True)
     return pd.DataFrame(
         {
@@ -197,24 +210,46 @@ def daily_series(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def eval_window_compare(df: pd.DataFrame, train_frac: float = 0.7) -> pd.DataFrame | None:
+    """Rule vs ML precision@k on the same future eval slice used in training."""
+    if df.empty or "ml_score" not in df.columns:
+        return None
+    try:
+        _, eval_df, cutoff = time_split(df, train_frac=train_frac)
+    except ValueError:
+        return None
+    rows = []
+    for name, col in (("ML", "ml_score"), ("Rule", "rule_score")):
+        rows.append(
+            {
+                "Scorer": name,
+                "P@50": precision_at_k(eval_df, k=50, score_col=col),
+                "P@100": precision_at_k(eval_df, k=100, score_col=col),
+                "Avg score": eval_df[col].mean(),
+                "n_eval": len(eval_df),
+                "cutoff": cutoff,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def render_kpis(df: pd.DataFrame, full_window: pd.DataFrame) -> None:
     n = len(df)
     fraud_rate = df["label_fraud"].mean() if n else float("nan")
     vip_n = int((df["segment"] == "vip").sum()) if n else 0
-    mass_n = int((df["segment"] == "mass").sum()) if n else 0
     vip_share = vip_n / n if n else float("nan")
-    p50 = precision_at_k(df, k=50) if n else float("nan")
-    alert_load = int((df["risk_score"] >= 0.35).sum()) if n else 0
+    p50 = precision_at_k(df, k=50, score_col=SCORE_COL) if n else float("nan")
+    alert_load = int((df[SCORE_COL] >= FLAG_THRESHOLD).sum()) if n else 0
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Volume", f"{n:,}")
     c2.metric("Fraud rate", _fmt_pct(fraud_rate))
     c3.metric("VIP share", _fmt_pct(vip_share) if n else "—")
-    c4.metric("Precision@50", _fmt_pct(p50))
+    c4.metric("Precision@50 (ML)", _fmt_pct(p50))
     c5.metric("Alert load", f"{alert_load:,}")
     st.caption(
         f"Window in view: {full_window['ts'].min().date()} → {full_window['ts'].max().date()} "
-        f"· score ≥ 0.35 counted as flagged · weights "
+        f"· flagged at {FLAG_THRESHOLD:.2f} on ML score · rule weights "
         f"v={WEIGHTS['velocity']:.2f} d={WEIGHTS['device']:.2f} "
         f"a={WEIGHTS['amount']:.2f} g={WEIGHTS['geo']:.2f}"
     )
@@ -277,13 +312,27 @@ def chart_score_hist(df: pd.DataFrame) -> None:
     if df.empty:
         st.info("No rows for current filters.")
         return
+    long = df.melt(
+        value_vars=["ml_score", "rule_score"],
+        var_name="scorer",
+        value_name="score",
+    )
+    long["scorer"] = long["scorer"].map({"ml_score": "ML", "rule_score": "Rule"})
     hist = (
-        alt.Chart(df)
-        .mark_bar(color=COLORS["accent"], opacity=0.75)
+        alt.Chart(long)
+        .mark_bar(opacity=0.55)
         .encode(
-            x=alt.X("risk_score:Q", bin=alt.Bin(maxbins=28), title="Risk score"),
+            x=alt.X("score:Q", bin=alt.Bin(maxbins=28), title="Score"),
             y=alt.Y("count()", title="Txs"),
-            tooltip=[alt.Tooltip("count()", title="txs")],
+            color=alt.Color(
+                "scorer:N",
+                scale=alt.Scale(
+                    domain=["ML", "Rule"],
+                    range=[COLORS["accent"], COLORS["mass"]],
+                ),
+                legend=alt.Legend(title=None, orient="top-right"),
+            ),
+            tooltip=["scorer:N", alt.Tooltip("count()", title="txs")],
         )
         .properties(height=240)
         .configure_axis(labelColor=COLORS["muted"], titleColor=COLORS["muted"])
@@ -305,10 +354,11 @@ def render_queue(df: pd.DataFrame) -> None:
         "device_users_24h",
         "amount_z_user",
         "geo_mismatch",
-        "risk_score",
+        "ml_score",
+        "rule_score",
         "label_fraud",
     ]
-    show = df.nlargest(min(200, len(df)), "risk_score")[cols].copy()
+    show = df.nlargest(min(200, len(df)), SCORE_COL)[cols].copy()
     show = show.rename(
         columns={
             "tx_cnt_1h": "vel_1h",
@@ -318,13 +368,15 @@ def render_queue(df: pd.DataFrame) -> None:
             "device_users_24h": "dev_users_24h",
             "amount_z_user": "amt_z",
             "geo_mismatch": "geo_mm",
-            "risk_score": "score",
+            "ml_score": "ml",
+            "rule_score": "rule",
             "label_fraud": "fraud",
         }
     )
     show["ts"] = show["ts"].dt.strftime("%Y-%m-%d %H:%M")
     show["amount"] = show["amount"].round(2)
-    show["score"] = show["score"].round(3)
+    show["ml"] = show["ml"].round(3)
+    show["rule"] = show["rule"].round(3)
     show["amt_z"] = show["amt_z"].round(2)
     st.dataframe(
         show,
@@ -332,7 +384,8 @@ def render_queue(df: pd.DataFrame) -> None:
         hide_index=True,
         height=380,
         column_config={
-            "score": st.column_config.NumberColumn(format="%.3f"),
+            "ml": st.column_config.NumberColumn(format="%.3f"),
+            "rule": st.column_config.NumberColumn(format="%.3f"),
             "amount": st.column_config.NumberColumn(format="%.2f"),
             "fraud": st.column_config.NumberColumn(format="%d"),
         },
@@ -343,8 +396,8 @@ def main() -> None:
     _inject_css()
     st.title("Fraud Ops Board")
     st.markdown(
-        '<p class="ops-sub">Synthetic portfolio · rule score over SQL features '
-        "(velocity, device reuse, amount z, geo). Not a production model.</p>",
+        '<p class="ops-sub">Synthetic portfolio · ML score over SQL features '
+        "(HistGradientBoosting) with rule score as baseline. Not production.</p>",
         unsafe_allow_html=True,
     )
 
@@ -366,10 +419,13 @@ def main() -> None:
             max_value=max_d,
         )
         segment = st.selectbox("Segment", options=["all", "vip", "mass"], index=0)
-        min_score = st.slider("Min score", min_value=0.0, max_value=1.0, value=0.0, step=0.01)
+        min_score = st.slider(
+            "Min ML score", min_value=0.0, max_value=1.0, value=0.0, step=0.01
+        )
         st.markdown(
-            f'<p class="ops-note">Flagged threshold fixed at 0.35 for '
-            f"alert load / flagged rate. Data: <code>{WIDE.name}</code></p>",
+            f'<p class="ops-note">Flagged threshold fixed at {FLAG_THRESHOLD:.2f} for '
+            f"alert load / flagged rate. Data: <code>{WIDE.name}</code>. "
+            f"Train: <code>make train</code></p>",
             unsafe_allow_html=True,
         )
 
@@ -378,10 +434,27 @@ def main() -> None:
     else:
         start, end = min_d, max_d
 
-    view = filter_frame(scored, start, end, segment, min_score)
+    view = filter_frame(scored, start, end, segment, min_score, score_col=SCORE_COL)
 
     st.markdown('<div class="ops-section">Headline</div>', unsafe_allow_html=True)
     render_kpis(view, scored)
+
+    st.markdown('<div class="ops-section">ML vs Rule (eval window)</div>', unsafe_allow_html=True)
+    cmp = eval_window_compare(scored)
+    if cmp is None:
+        st.info("Not enough rows for a time split compare.")
+    else:
+        cutoff = cmp["cutoff"].iloc[0]
+        display = cmp[["Scorer", "P@50", "P@100", "Avg score", "n_eval"]].copy()
+        display["P@50"] = display["P@50"].map(_fmt_pct)
+        display["P@100"] = display["P@100"].map(_fmt_pct)
+        display["Avg score"] = display["Avg score"].map(lambda x: f"{x:.3f}")
+        st.caption(
+            f"Same future slice as training (ts > {pd.Timestamp(cutoff).date()}), "
+            f"n={int(cmp['n_eval'].iloc[0])}."
+            + (f" Saved metrics: `{METRICS_JSON.name}`." if METRICS_JSON.exists() else "")
+        )
+        st.dataframe(display, use_container_width=True, hide_index=True)
 
     st.markdown('<div class="ops-section">VIP vs Mass</div>', unsafe_allow_html=True)
     cmp_df = segment_compare(view)
@@ -393,7 +466,8 @@ def main() -> None:
         display["flagged_share"] = display["flagged_share"].map(_fmt_pct)
         display["alert_share"] = display["alert_share"].map(_fmt_pct)
         display["avg_amount"] = display["avg_amount"].map(_fmt_num)
-        display["avg_score"] = display["avg_score"].map(lambda x: f"{x:.3f}")
+        display["avg_ml"] = display["avg_ml"].map(lambda x: f"{x:.3f}")
+        display["avg_rule"] = display["avg_rule"].map(lambda x: f"{x:.3f}")
         display = display.rename(
             columns={
                 "segment": "Segment",
@@ -402,7 +476,8 @@ def main() -> None:
                 "avg_amount": "Avg amount",
                 "flagged_share": "Flagged share",
                 "alert_share": "Volume share",
-                "avg_score": "Avg score",
+                "avg_ml": "Avg ML",
+                "avg_rule": "Avg rule",
             }
         )
         st.dataframe(display, use_container_width=True, hide_index=True)
@@ -410,14 +485,14 @@ def main() -> None:
     st.markdown('<div class="ops-section">Trends</div>', unsafe_allow_html=True)
     left, right = st.columns(2)
     with left:
-        st.caption("Daily volume · fraud rate (solid) · flagged rate (dashed)")
+        st.caption("Daily volume · fraud rate · flagged rate (ML ≥ 0.35)")
         chart_volume_rates(daily_series(view))
     with right:
-        st.caption("Score distribution")
+        st.caption("ML vs rule score distribution")
         chart_score_hist(view)
 
     st.markdown('<div class="ops-section">Queue</div>', unsafe_allow_html=True)
-    st.caption("Top risky txs by rule score (max 200). Sortable columns.")
+    st.caption("Top risky txs by ML score (max 200). Rule score shown for comparison.")
     if view.empty:
         st.info("No rows for current filters.")
     else:

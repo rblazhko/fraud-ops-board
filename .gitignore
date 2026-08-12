@@ -5,6 +5,13 @@ data/*.json
 !data/.gitkeep
 !data/fixtures/
 
+# model artifacts (regenerate with `make train`)
+artifacts/*
+!artifacts/.gitkeep
+reports/metrics.json
+reports/metrics.md
+!reports/.gitkeep
+
 # python
 __pycache__/
 *.py[cod]

@@ -1,4 +1,4 @@
-.PHONY: data features validate-rng test board clean
+.PHONY: data features train validate-rng test board clean
 
 PYTHON ?= python3
 export PYTHONPATH := .
@@ -8,6 +8,10 @@ data:
 
 features: data
 	$(PYTHON) scripts/run_sql_features.py --data data --sql sql --out data
+
+train: features
+	$(PYTHON) -m model.train --features data/features_wide.parquet \
+		--out artifacts/model.joblib --metrics reports/metrics.json
 
 validate-rng:
 	$(PYTHON) scripts/check_rng.py --seed seed.yaml
@@ -20,4 +24,5 @@ board:
 
 clean:
 	rm -f data/*.csv data/*.parquet
-	@# keep data/.gitkeep
+	rm -f artifacts/*.joblib reports/metrics.json reports/metrics.md
+	@# keep data/.gitkeep artifacts/.gitkeep reports/.gitkeep

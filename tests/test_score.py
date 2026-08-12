@@ -37,3 +37,14 @@ def test_weights_sum_to_one():
 def test_precision_at_k_prefers_high_score_fraud():
     out = score_frame(_tiny_frame())
     assert precision_at_k(out, k=1) == 1.0
+
+
+def test_score_survives_non_contiguous_index():
+    # A slice from a time split (e.g. the eval half) keeps its original
+    # index rather than resetting to 0..N-1 — score_frame must not silently
+    # NaN out on that shape.
+    df = _tiny_frame()
+    df.index = pd.RangeIndex(start=1000, stop=1000 + len(df))
+    out = score_frame(df)
+    assert out["risk_score"].notna().all()
+    assert out.loc[1001, "risk_score"] > out.loc[1000, "risk_score"]

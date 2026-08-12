@@ -44,7 +44,11 @@ def _amount_component(df: pd.DataFrame) -> pd.Series:
     from_z = _clip01(z.abs().fillna(0) / 4.0)
     cold = df["cold_start_flag"].fillna(0).astype(float)
     # Cold-start: no z — mild uncertainty, not a hard flag
-    return _clip01(np.where(z.isna(), 0.12 * cold, from_z))
+    # np.where drops the pandas index, which silently misaligns on any
+    # frame that isn't 0-indexed (e.g. a slice from a time split) — so
+    # rebuild the Series against df.index before clipping.
+    blended = pd.Series(np.where(z.isna(), 0.12 * cold, from_z), index=df.index)
+    return _clip01(blended)
 
 
 def _geo_component(df: pd.DataFrame) -> pd.Series:
